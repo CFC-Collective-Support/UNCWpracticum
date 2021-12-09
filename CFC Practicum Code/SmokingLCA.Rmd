@@ -1,0 +1,140 @@
+---
+title: "HIE_Latent_Class"
+author: "Evie"
+date: "9/2/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r}
+data = read.csv("C:\\Users\\ecl6729\\Desktop\\Practice\\Smoking.csv")
+attach(data)
+n=dim(data)[1]
+
+
+```
+
+```{r}
+library(poLCA)
+library(corrplot)
+library(formattable)
+
+```
+
+
+```{r }
+#dataS <- data[sample(1:nrow(data), 1000), ]  # Sample rows of data with Base R
+#dataS
+```
+```{r}
+demo <- data[,c('gender','race','ethnicity','language','tract_fips')]
+demo
+```
+```{r}
+demo$gender[demo$gender == "M"] <- 1
+demo$gender[demo$gender == "F"] <- 2
+demo$gender[demo$gender == "UN"] <- 3
+demo$gender[demo$gender == "UNK"] <- 3
+table(demo$gender)
+
+```
+```{r}
+demo <- na.omit(demo)
+
+```
+```{r}
+table(demo$race)
+```
+
+```{r}
+
+table(demo$race)
+demo$race[demo$race == "White"] <- 1
+demo$race[demo$race == "Black Or African American Native"] <- 2
+demo$race[demo$race == "American Indian Or Alaska Native"] <- 3
+demo$race[demo$race == "American Indian or Alaska Native"] <- 3
+demo$race[demo$race == "Alaska Native"] <- 3
+demo$race[demo$race == "Asian"] <- 4
+demo$race[demo$race == "Black or African American"] <- 5
+demo$race[demo$race == "Black Or African American"] <- 5
+demo$race[demo$race == "Native Hawaiian or Other Pacific Islander"] <- 6
+demo$race[demo$race == "Native Hawaiian Or Other Pacific Islander"] <- 6
+demo$race[demo$race == "Other Pacific Islander"] <- 6
+demo$race[demo$race == 'Other Race'] <- 7
+demo$race[demo$race == 'Unknown'] <- 8
+
+```
+```{r}
+table(demo$race)
+table(demo$ethnicity)
+```
+
+```{r}
+demo$ethnicity[demo$ethnicity == 'Hispanic Or Latino'] <- 1
+demo$ethnicity[demo$ethnicity == 'Hispanic or Latino'] <- 1
+demo$ethnicity[demo$ethnicity == 'Not Hispanic or Latino'] <- 2
+demo$ethnicity[demo$ethnicity == 'Not Hispanic Or Latino'] <- 2
+demo$ethnicity[demo$ethnicity == 'Unknown'] <- 3
+```
+```{r}
+table(demo$ethnicity)
+table(demo$language)
+```
+
+```{r}
+demo$language[demo$language == 'es'] <- 2
+demo$language[demo$language == 'en'] <- 1
+demo$language[demo$language == 'fr'] <- 3
+demo$language[demo$language == 'so'] <- 3
+demo$language[demo$language == 'zh'] <- 3
+demo$language[demo$language == 'ar'] <- 3
+demo$language[demo$language == 'UNK'] <- 4
+
+
+table(demo$language)
+```
+
+```{r}
+demo$gender <- as.numeric(as.character(demo$gender))
+demo$race <- as.numeric(as.character(demo$race))
+demo$ethnicity <- as.numeric(as.character(demo$ethnicity))
+demo$language <- as.numeric(as.character(demo$language))
+demo
+```
+
+```{r}
+
+f<-cbind(gender,race,ethnicity,language)~1
+
+two <- poLCA(f,demo, nclass=2)
+thr <- poLCA(f,demo, nclass=3)
+four <- poLCA(f,demo, nclass=4)
+```
+```{r}
+old.packages()
+```
+
+
+```{r}
+gof=matrix(1,9,6)
+colnames(gof)<-c("k=","llik","AIC","BIC","Gsq","Chisq")
+for (i in 2:10){
+  set.seed(05162018)
+  res=poLCA(f,as.data.frame(demo),graphs = F,nclass=i,verbose=F)
+  gof[i-1,]=c(i,res$llik,res$aic,res$bic,res$Gsq,res$Chisq)
+}
+min_bold <- formatter("span", 
+  style = x ~ style("font-weight" = ifelse(abs(x) == min(abs(x)) | abs(abs(x) - min(abs(x)))<=4, 
+                                           "bold", NA)))
+finals <- data.frame(gof)
+finals
+
+```
+```{r Fig1, echo=FALSE, fig.height=10, fig.width=10}
+res=poLCA(f,as.data.frame(demo),graphs = T,nclass=4)
+```
+```{r}
+
+```
+

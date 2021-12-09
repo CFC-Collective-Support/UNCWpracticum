@@ -1,0 +1,128 @@
+---
+title: "logregsmok"
+author: "Evie"
+date: "12/8/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r cars}
+#install.packages('aod')
+library(aod)
+library(ggplot2)
+```
+```{r}
+data <- read.csv("C:\\Users\\ecl6729\\Downloads\\full_data.csv")
+#head(data)
+table(data$tract_fips)
+```
+```{r}
+#I am fixing the data using the information that I got from Laurens data dictionary work
+data$ethnicity[data$ethnicity == 'Not Hispanic Or Latino'] <- 'Not Hispanic or Latino'
+data$ethnicity[data$ethnicity == 'Hispanic Or Latino'] <- 'Hispanic or Latino'
+data$gender[data$gender == 'Male'] <- 'M'
+data$gender[data$gender == 'MALE'] <- 'M'
+data$gender[data$gender == 'Female']<- 'F'
+data$gender[data$gender == 'FEMALE'] <- 'F'
+data$gender[data$gender == 'UN']<- 'UNK'
+data$gender[data$gender == 'N']<- 'UNK'
+data$gender[data$gender == 'UNKNOWN']<- 'UNK'
+data$gender[data$gender == 'Unknown']<- 'UNK'
+data$gender[data$gender == 'Undifferentiated']<- 'UNK'
+data$smoke[data$smoke != 'Yes'] <- 'UNK'
+
+
+```
+```{r}
+#This selects the columns that I want and makes sure that it is only taking individual patient IDs 
+data2 <- data[,c(2,5,3,4,7,10)]
+data2 <- data2[!duplicated(data2$patient_id),]
+#data2$tract_fips <- as.character(data2$tract_fips)
+```
+```{r}
+data2
+data3 <- data2[complete.cases(data2), ]
+data3
+write.csv(data3,"C:\\Users\\ecl6729\\Downloads\\not_dup.csv", row.names = FALSE)
+```
+```{r}
+xtabs(~smoke + facility + ethnicity + gender + age, data=data3)
+
+```
+```{r}
+#shuffle the data
+data3 <- data3[sample(1:nrow(data3)), ]
+head(data3)
+datatrain <- head(data3, n= 555000)
+datatrainspec <- head(data3, n= 5000)
+datatest <- tail(data3 , n=48480)
+```
+
+
+
+
+```{r}
+datatrain$smoke <- factor(datatrain$smoke)
+mylogit <- glm(smoke ~ facility + ethnicity + gender + age, data = datatrain, family = "binomial")
+#Training my model
+```
+```{r}
+
+#Here is my model
+summary(mylogit)
+
+```
+
+```{r}
+#Prediciting the test vlaues
+datatest$smokeP <- predict(mylogit, newdata = datatest, type = "response")
+datatest
+
+```
+```{r}
+#This allows me to change senesitivity and check accuracy
+#install.packages("magrittr") # package installations are only needed the first time you use it
+#install.packages("dplyr")    # alternative installation of the %>%
+library(magrittr) # needs to be run every time you start R and want to use %>%
+library(dplyr)
+#this is where I can change sensitivity
+datatest <- datatest  %>% mutate(smokePred = 1*(smokeP > .30) + 0, 
+                                 smoke_binary = 1*(smoke == "Yes") + 0)
+
+datatest <- datatest %>% mutate(accurate = 1*(smokePred == smoke_binary))
+sum(datatest$accurate)/nrow(datatest)
+
+
+```
+
+```{r}
+head(datatest)
+wrong <- datatest[datatest$accurate == 0,]
+wrong
+no <- wrong[wrong$smoke == 'UNK',]
+no
+right <- datatest[datatest$accurate == 1,]
+smoker <- right[right$smoke == 'Yes',]
+
+#looking into what was misclassifed. We got over 40,000 smokers labeled correct
+```
+
+```{r}
+smoker
+#this is a dataset of smokers that were properly classified
+
+```
+```{r}
+datatest[datatest$smoke == 'Yes',]
+
+```
+
+```{r}
+
+summary(mylogit)
+
+```

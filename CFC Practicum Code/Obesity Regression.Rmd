@@ -1,0 +1,127 @@
+---
+title: "Obesity Classification"
+author: "Katherine Scoggins"
+date: "12/7/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(ROCR) 
+library(Metrics)
+library(tidyverse)
+library(caret)
+library(dplyr)
+library(data.table)
+library(plyr)
+library(stringr)
+```
+
+
+
+```{r}
+# Read in dataset created in Create Obesity Classication Data
+
+Obesity = read.csv('HIEdata_HistoryOfObesity.csv')
+```
+
+```{r}
+#View first 6 rows of data 
+
+head(Obesity)
+```
+
+
+```{r}
+# Subset Obesity data to create a new Obesity4Model dataset 
+# Keep only the Patient ID, Age, Gender, Race, Ethnicity, Facility, Tract Fips, and History of Obesity columns
+
+Obesity4Model = Obesity[c('patient_id','age','gender','race','ethnicity','facility','tract_fips', 'HistoryOfObesity_yn')]
+```
+
+```{r}
+# Check dataframe dimensions
+
+dim(Obesity4Model)
+```
+```{r}
+# Remove all rows with NA values
+
+NewObesity4Model <- na.omit(Obesity4Model)
+```
+
+```{r}
+#Check dimensions
+
+dim(NewObesity4Model)
+```
+```{r}
+#Make the History Of Obesity (yes/no) column into numeric, Yes=1, No=0
+
+NewObesity4Model$HistoryOfObesity_yn<-ifelse(NewObesity4Model$HistoryOfObesity_yn=="Yes",1,0)
+```
+
+```{r}
+#Change casing of ethnicity and race (fixes issues like 'Black or African American' vs 'Black Or African American')
+
+NewObesity4Model$ethnicity = str_to_title(NewObesity4Model$ethnicity)
+NewObesity4Model$race = str_to_title(NewObesity4Model$race)
+```
+
+```{r}
+#If gender = 'UN' then change to 'UNK'
+
+NewObesity4Model$gender[which(NewObesity4Model$gender == "UN")] = "UNK"
+```
+
+
+```{r}
+#View first 6 observations 
+
+head(NewObesity4Model)
+```
+
+
+
+```{r}
+# Create training and test data
+
+set.seed(123)
+training.samples <- NewObesity4Model$HistoryOfObesity_yn %>% 
+  createDataPartition(p = 0.8, list = FALSE)
+train.data  <- NewObesity4Model[training.samples, ]
+test.data <- NewObesity4Model[-training.samples, ]
+```
+
+
+
+```{r}
+# Create a model and call a summary on it
+
+model =  glm(HistoryOfObesity_yn ~ age + factor(gender)+factor(race)+factor(ethnicity)+factor(facility), data=train.data, family=binomial)
+summary(model)
+```
+
+```{r}
+#View ANOVA of model created
+
+anova(model, test = 'Chisq')
+```
+```{r}
+# Find the accuracy of the model
+
+predict <- predict(model, test.data, type = 'response')
+# confusion matrix
+table_mat <- table(test.data$HistoryOfObesity_yn, predict > 0.5)
+accuracy_Test <- sum(diag(table_mat)) / sum(table_mat)
+accuracy_Test
+```
+
+
+
+
+
