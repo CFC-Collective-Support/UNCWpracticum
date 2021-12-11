@@ -1,0 +1,302 @@
+---
+title: "CreateInfantsdataset"
+author: "RSKEETE"
+date: "12/9/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r}
+library("tidyverse")
+library("data.table")
+library("readr")
+library(aws.s3)
+```
+
+
+```{r}
+# Read demographic dataset saved in AWS bucket
+demog_data <-  s3read_using(FUN = fread, bucket = "hiepracticum", object = "PatientDemographics_RC.csv")
+```
+
+
+```{r}
+dim(demog_data)
+names(demog_data)
+```
+
+
+PatientID column (2nd column) had weird encoding so the code below converts it to ASCII
+```{r}
+colnames(demog_data) <- iconv(names(demog_data), to = "ASCII", sub = "")
+```
+
+
+```{r}
+demo_tb<-as_tibble(demog_data, .name_repair = "universal")
+head(demo_tb)
+```
+
+```{r}
+# read in HIE dataset
+hie_data <-  s3read_using(FUN = fread, bucket = "hiepracticum", object = "_SQL_query_Combined_Jan2019_Jan2021.csv")
+```
+
+```{r}
+# drop duplicate patient ids
+demo_unique_tb <- demo_tb[!duplicated(demo_tb$PatientID),]
+dim(demo_unique_tb)
+```
+
+
+```{r}
+#Merged hie and demographics datasets
+df_merge<-merge(hie_data, demo_unique_tb, by.x="patient_id", by.y="PatientID")
+dim(df_merge)
+```
+
+
+```{r}
+# Clean race column
+df_merge$race.x <- gsub("Or", "or", df_merge$race.x)
+df_merge$race.x <- gsub("Native Hawaiian or Other Pacific Islander", "Pacific Islander", df_merge$race.x)
+df_merge$race.x <- gsub("Other Pacific Islander", "Pacific Islander", df_merge$race.x)
+df_merge$race.x <- gsub("Alaska Native", "American Indian or Alaska Native", df_merge$race.x)
+df_merge$race.x <- gsub("American Indian or American Indian or Alaska Native", "American Indian or Alaska Native", df_merge$race.x)
+```
+
+
+```{r}
+df_merge$race.x<-factor(df_merge$race.x)
+df_merge$DeceasedIndicator<-factor(df_merge$DeceasedIndicator)
+```
+
+
+```{r}
+# estimated mortality rate in region
+infants_died<-df_merge[which(df_merge$DeceasedIndicator==1&df_merge$age.x<3),]
+length(unique(infants_died$patient_id))
+
+# some patients would have been 2 at the time of pulling dataset but died before 2 years old
+all_infants<-df_merge[which(df_merge$age.x<3),] # All infants
+length(unique(all_infants$patient_id))
+ifr<-length(unique(infants_died$patient_id))/length(unique(all_infants$patient_id))*1000
+paste("Cape Fear region's infant mortality rate is",round(ifr,1),"in a thousand live births", sep=" ")
+```
+
+
+```{r}
+# Estimated Black infant mortality rate Cape Fear region
+infants_died_B<-df_merge[which(df_merge$DeceasedIndicator==1&df_merge$age.x<3&df_merge$race.x=="Black or African American"),]
+length(unique(infants_died_B$patient_id))
+infants_B=df_merge[which(df_merge$age.x<3&df_merge$race.x=="Black or African American"),] # All Black infants
+length(unique(infants_B$patient_id))
+ifr<-length(unique(infants_died_B$patient_id))/length(unique(infants_B$patient_id))*1000
+paste("Cape Fear's Black infant mortality rate is",round(ifr,1),"in a thousand live births", sep=" ")
+```
+
+```{r}
+#Estimated White infant mortality rate in Cape Fear region
+infants_died_W<-df_merge[which(df_merge$DeceasedIndicator==1&df_merge$age.x<3&df_merge$race.x=="White"),]
+length(unique(infants_died_W$patient_id))
+infants_W=df_merge[which(df_merge$age.x<3&df_merge$race.x=="White"),] # All White infants
+length(unique(infants_W$patient_id))
+ifr<-length(unique(infants_died_W$patient_id))/length(unique(infants_W$patient_id))*1000
+paste("Cape Fear's White infant mortality rate is",round(ifr,1),"in a thousand live births", sep=" ")
+```
+
+
+```{r}
+# Infants who died in New Hanover
+NH_infants_died<-df_merge[which(df_merge$DeceasedIndicator==1&df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37129"),]
+length(unique(NH_infants_died$patient_id))
+NH_infants=df_merge[which(df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37129"),] # All NH infants
+length(unique(NH_infants$patient_id))
+ifr<-length(unique(NH_infants_died$patient_id))/length(unique(NH_infants$patient_id))*1000
+paste("New Hanover's infant mortality rate is",round(ifr,1),"in a thousand live births", sep=" ")
+
+#Blacks
+NH_infants_died_B<-df_merge[which(df_merge$DeceasedIndicator==1&df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37129"&df_merge$race.x=="Black or African American"),]
+length(unique(NH_infants_died_B$patient_id))
+NH_infants_B=df_merge[which(df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37129"&df_merge$race.x=="Black or African American"),] # All NH Black infants
+length(unique(NH_infants_B$patient_id))
+ifr<-length(unique(NH_infants_died_B$patient_id))/length(unique(NH_infants_B$patient_id))*1000
+paste("New Hanover's Black infant mortality rate is",round(ifr,1),"in a thousand live births", sep=" ")
+
+#Whites
+NH_infants_died_W<-df_merge[which(df_merge$DeceasedIndicator==1&df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37129"&df_merge$race.x=="White"),]
+length(unique(NH_infants_died_W$patient_id))
+NH_infants_W=df_merge[which(df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37129"&df_merge$race.x=="White"),] # All NH White infants
+length(unique(NH_infants_W$patient_id))
+ifr<-length(unique(NH_infants_died_W$patient_id))/length(unique(NH_infants_W$patient_id))*1000
+paste("New Hanover's White infant mortality rate is",round(ifr,1),"in a thousand live births", sep=" ")
+
+#Native American
+NH_infants_died_N<-df_merge[which(df_merge$DeceasedIndicator==1&df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37129"&df_merge$race.x=="American Indian or Alaska Native"),]
+length(unique(NH_infants_died_N$patient_id))
+NH_infants_N=df_merge[which(df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37129"&df_merge$race.x=="American Indian or Alaska Native"),] # All NH American Indian or Alaska Native infants
+length(unique(NH_infants_N$patient_id))
+ifr<-length(unique(NH_infants_died_N$patient_id))/length(unique(NH_infants_N$patient_id))*1000
+paste("New Hanover's American Indian or Alaska Native infant mortality rate is",round(ifr,1),"in a thousand live births", sep=" ")
+
+#Infants who died in Brunswick
+BR_infants_died<-df_merge[which(df_merge$DeceasedIndicator==1&df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37019"),]
+length(unique(BR_infants_died$patient_id))
+BR_infants=df_merge[which(df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37019"),] # All BR infants
+length(unique(BR_infants$patient_id))
+ifr<-length(unique(BR_infants_died$patient_id))/length(unique(BR_infants$patient_id))*1000
+paste("Brunswick's infant mortality rate is",round(ifr,1),"in a thousand live births", sep=" ")
+
+#Blacks
+BR_infants_died_B<-df_merge[which(df_merge$DeceasedIndicator==1&df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37019"&df_merge$race.x=="Black or African American"),]
+length(unique(BR_infants_died_B$patient_id))
+BR_infants_B=df_merge[which(df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37019"&df_merge$race.x=="Black or African American"),] # All BR Black infants
+length(unique(BR_infants_B$patient_id))
+ifr<-length(unique(BR_infants_died_B$patient_id))/length(unique(BR_infants_B$patient_id))*1000
+paste("Brunswick's Black infant mortality rate is",round(ifr,1),"in a thousand live births", sep=" ")
+
+#Whites
+BR_infants_died_W<-df_merge[which(df_merge$DeceasedIndicator==1&df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37019"&df_merge$race.x=="White"),]
+length(unique(BR_infants_died_W$patient_id))
+BR_infants_W=df_merge[which(df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37019"&df_merge$race.x=="White"),] # All BR White infants
+length(unique(BR_infants_W$patient_id))
+ifr<-length(unique(BR_infants_died_W$patient_id))/length(unique(BR_infants_W$patient_id))*1000
+paste("Brunswick's White infant mortality rate is",round(ifr,1),"in a thousand live births", sep=" ")
+
+#Infants who died in Pender
+PE_infants_died<-df_merge[which(df_merge$DeceasedIndicator==1&df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37141"),]
+length(unique(PE_infants_died$patient_id))
+PE_infants=df_merge[which(df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37141"),] # All PE infants
+length(unique(PE_infants$patient_id))
+ifr<-length(unique(PE_infants_died$patient_id))/length(unique(PE_infants$patient_id))*1000
+paste("Pender's infant mortality rate is",round(ifr,1),"in a thousand live births", sep=" ")
+
+#Infants who died in Onslow
+ON_infants_died<-df_merge[which(df_merge$DeceasedIndicator==1&df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37133"),]
+length(unique(ON_infants_died$patient_id))
+ON_infants=df_merge[which(df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37133"),] # All ON infants
+length(unique(ON_infants$patient_id))
+ifr<-length(unique(ON_infants_died$patient_id))/length(unique(ON_infants$patient_id))*1000
+paste("Onslow's infant mortality rate is",round(ifr,1),"in a thousand live births", sep=" ")
+
+#Blacks
+ON_infants_died_B<-df_merge[which(df_merge$DeceasedIndicator==1&df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37133"&df_merge$race.x=="Black or African American"),]
+length(unique(ON_infants_died_B$patient_id))
+ON_infants_B=df_merge[which(df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37133"&df_merge$race.x=="Black or African American"),] # All Onslow Black infants
+length(unique(ON_infants_B$patient_id))
+ifr<-length(unique(ON_infants_died_B$patient_id))/length(unique(ON_infants_B$patient_id))*1000
+paste("Onslow's Black infant mortality rate is",round(ifr,1),"in a thousand live births", sep=" ")
+
+#Whites
+ON_infants_died_W<-df_merge[which(df_merge$DeceasedIndicator==1&df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37133"&df_merge$race.x=="White"),]
+length(unique(ON_infants_died_W$patient_id))
+ON_infants_W=df_merge[which(df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37133"&df_merge$race.x=="White"),] # All Onslow White infants
+length(unique(ON_infants_W$patient_id))
+ifr<-length(unique(ON_infants_died_W$patient_id))/length(unique(ON_infants_W$patient_id))*1000
+paste("Onslow's White infant mortality rate is",round(ifr,1),"in a thousand live births", sep=" ")
+
+#Infants who died in Columbus
+CO_infants_died<-df_merge[which(df_merge$DeceasedIndicator==1&df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37047"),]
+length(unique(CO_infants_died$patient_id))
+CO_infants=df_merge[which(df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37047"),] # All ON infants
+length(unique(CO_infants$patient_id))
+ifr<-length(unique(CO_infants_died$patient_id))/length(unique(CO_infants$patient_id))*1000
+paste("Columbus' infant mortality rate is",round(ifr,1),"in a thousand live births", sep=" ")
+
+#Blacks
+CO_infants_died_B<-df_merge[which(df_merge$DeceasedIndicator==1&df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37047"&df_merge$race.x=="Black or African American"),]
+length(unique(ON_infants_died_B$patient_id))
+CO_infants_B=df_merge[which(df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37047"&df_merge$race.x=="Black or African American"),] # All Onslow Black infants
+length(unique(CO_infants_B$patient_id))
+ifr<-length(unique(CO_infants_died_B$patient_id))/length(unique(CO_infants_B$patient_id))*1000
+paste("Columbus's Black infant mortality rate is",round(ifr,1),"in a thousand live births", sep=" ")
+
+#Whites
+CO_infants_died_W<-df_merge[which(df_merge$DeceasedIndicator==1&df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37047"&df_merge$race.x=="White"),]
+length(unique(CO_infants_died_W$patient_id))
+CO_infants_W=df_merge[which(df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37047"&df_merge$race.x=="White"),] # All Onslow White infants
+length(unique(CO_infants_W$patient_id))
+ifr<-length(unique(CO_infants_died_W$patient_id))/length(unique(CO_infants_W$patient_id))*1000
+paste("Columbus's White infant mortality rate is",round(ifr,1),"in a thousand live births", sep=" ")
+
+# Bladen County infant deaths
+Bladen_infants_died<-df_merge[which(df_merge$DeceasedIndicator==1&df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37017"),]
+length(unique(Bladen_infants_died$patient_id))
+Bladen_infants=df_merge[which(df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37017"),] # All ON infants
+length(unique(Bladen_infants$patient_id))
+length(unique(Bladen_infants_died$patient_id))/length(unique(Bladen_infants$patient_id))
+
+#Sampson County infant deaths
+Sampson_infants_died<-df_merge[which(df_merge$DeceasedIndicator==1&df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37163"),]
+length(unique(Sampson_infants_died$patient_id))
+Sampson_infants=df_merge[which(df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37163"),] # All ON infants
+length(unique(Sampson_infants$patient_id))
+length(unique(Sampson_infants_died$patient_id))/length(unique(Sampson_infants$patient_id))
+
+# Robeson County infant deaths
+Robeson_infants_died<-df_merge[which(df_merge$DeceasedIndicator==1&df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37155"),]
+length(unique(Robeson_infants_died$patient_id))
+Robeson_infants=df_merge[which(df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37155"),] # All ON infants
+length(unique(Robeson_infants$patient_id))
+ifr<-length(unique(Robeson_infants_died$patient_id))/length(unique(Robeson_infants$patient_id))*1000
+ifr
+paste("Robeson's infant mortality rate is",ifr,"in a thousand live births", sep=" ")
+
+# Duplin county infants
+Duplin_infants_died<-df_merge[which(df_merge$DeceasedIndicator==1&df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37061"),]
+length(unique(Duplin_infants_died$patient_id))
+Duplin_infants=df_merge[which(df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37061"),] # All ON infants
+length(unique(Duplin_infants$patient_id))
+ifr<-length(unique(Duplin_infants_died$patient_id))/length(unique(Duplin_infants$patient_id))*1000
+ifr
+paste("Duplin's infant mortality rate is",round(ifr,1),"in a thousand live births", sep=" ")
+
+#Blacks
+Duplin_infants_died_B<-df_merge[which(df_merge$DeceasedIndicator==1&df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37061"&df_merge$race.x=="Black or African American"),]
+length(unique(Duplin_infants_died_B$patient_id))
+Duplin_infants_B=df_merge[which(df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37061"&df_merge$race.x=="Black or African American"),] # All Duplin Black infants
+length(unique(Duplin_infants_B$patient_id))
+ifr<-length(unique(Duplin_infants_died_B$patient_id))/length(unique(Duplin_infants_B$patient_id))*1000
+paste("Duplin's Black infant mortality rate is",round(ifr,1),"in a thousand live births", sep=" ")
+
+#Whites
+Duplin_infants_died_W<-df_merge[which(df_merge$DeceasedIndicator==1&df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37061"&df_merge$race.x=="White"),]
+length(unique(Duplin_infants_died_W$patient_id))
+Duplin_infants_W=df_merge[which(df_merge$age.x<3&substr(df_merge$tract_fips,1,5)=="37061"&df_merge$race.x=="White"),] # All Duplin White infants
+length(unique(Duplin_infants_W$patient_id))
+ifr<-length(unique(Duplin_infants_died_W$patient_id))/length(unique(Duplin_infants_W$patient_id))*1000
+paste("Duplin's White infant mortality rate is",round(ifr,1),"in a thousand live births", sep=" ")
+
+
+```
+
+
+```{r}
+# Create dataset of just infants and export it for further analysis
+
+
+# Save csv files in tempdir()
+infants_all<-df_merge %>%
+  filter(age.x<3) %>% # some patients woiuld have been 2 at the time of pulling dataset but died before 2 years old
+  arrange(age.x, encounter_code) %>%
+  distinct(patient_id, .keep_all = TRUE)
+  
+
+write.csv(infants_all, file.path(tempdir(), "infants_all.csv"))
+
+```
+
